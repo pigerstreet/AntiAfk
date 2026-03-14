@@ -80,8 +80,10 @@ def do_movement():
 
 
 def do_hotbar_switch():
-    slot = str(random.randint(1, 9))
-    tap_key(slot)
+    # Custom hotbar keybinds: slots 1-9
+    hotbar_keys = ['q', 'f', '3', '4', Key.backspace, 'z', 'x', 'c', 'v']
+    key = random.choice(hotbar_keys)
+    tap_key(key)
 
 
 def antiafk_loop():
