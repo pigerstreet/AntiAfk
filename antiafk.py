@@ -17,15 +17,22 @@ mouse = MouseController()
 
 # === Configuration ===
 TOGGLE_KEY = Key.f6           # Press F6 to toggle on/off
-INTERVAL_MIN = 3.0            # Min seconds between actions
-INTERVAL_MAX = 7.0            # Max seconds between actions
+ACTION_INTERVAL_MIN = 3.0     # Min seconds between random actions
+ACTION_INTERVAL_MAX = 7.0     # Max seconds between random actions
 MOUSE_MOVE_RANGE = 60         # Max pixels to move mouse
 ENABLE_JUMP = True
 ENABLE_SNEAK = False
 ENABLE_SWING = True           # Left click (swing hand)
 ENABLE_MOUSE_MOVE = True
-ENABLE_MOVEMENT = True
-ENABLE_HOTBAR_SWITCH = True
+ENABLE_HOTBAR_SWITCH = False  # Disabled by default - uses custom keys
+
+# Movement settings
+WALK_DURATION = 2.0           # Seconds to walk in each direction
+PAUSE_DURATION = 0.5          # Seconds to pause between directions
+MOVEMENT_KEYS = ['w', 'a', 's', 'd']  # Forward, Left, Back, Right
+
+# Your hotbar keybinds (slots 1-9)
+HOTBAR_KEYS = ['q', 'f', '3', '4', Key.backspace, 'z', 'x', 'c', 'v']
 # =====================
 
 running = False
@@ -41,7 +48,6 @@ def random_sleep(min_s, max_s):
 
 
 def tap_key(key, hold=0.05):
-    """Press and release a key."""
     keyboard.press(key)
     time.sleep(hold)
     keyboard.release(key)
@@ -63,56 +69,86 @@ def do_swing():
 def do_mouse_move():
     dx = random.randint(-MOUSE_MOVE_RANGE, MOUSE_MOVE_RANGE)
     dy = random.randint(-MOUSE_MOVE_RANGE // 2, MOUSE_MOVE_RANGE // 2)
-    # Smooth movement in small steps
     steps = random.randint(5, 15)
     for i in range(steps):
+        if stop_event.is_set():
+            return
         mouse.move(dx // steps, dy // steps)
         time.sleep(0.01)
 
 
-def do_movement():
-    keys = ['w', 'a', 's', 'd']
-    key = random.choice(keys)
-    hold_time = random.uniform(0.3, 1.0)
-    keyboard.press(key)
-    time.sleep(hold_time)
-    keyboard.release(key)
-
-
 def do_hotbar_switch():
-    # Custom hotbar keybinds: slots 1-9
-    hotbar_keys = ['q', 'f', '3', '4', Key.backspace, 'z', 'x', 'c', 'v']
-    key = random.choice(hotbar_keys)
+    key = random.choice(HOTBAR_KEYS)
     tap_key(key)
+
+
+def continuous_movement():
+    """Continuously walk in a square pattern: forward -> right -> back -> left."""
+    direction_index = 0
+
+    while not stop_event.is_set():
+        key = MOVEMENT_KEYS[direction_index]
+        walk_time = WALK_DURATION + random.uniform(-0.5, 0.5)
+
+        # Hold the movement key
+        keyboard.press(key)
+        end = time.time() + walk_time
+        while time.time() < end and not stop_event.is_set():
+            time.sleep(0.05)
+        keyboard.release(key)
+
+        if stop_event.is_set():
+            break
+
+        # Brief pause between directions
+        time.sleep(PAUSE_DURATION)
+
+        # Next direction
+        direction_index = (direction_index + 1) % 4
+
+    # Make sure all movement keys are released
+    for key in MOVEMENT_KEYS:
+        keyboard.release(key)
+
+
+def random_actions():
+    """Periodically perform random actions (jump, swing, look around, etc.)."""
+    while not stop_event.is_set():
+        actions = []
+        if ENABLE_JUMP:
+            actions.append(do_jump)
+        if ENABLE_SNEAK:
+            actions.append(do_sneak)
+        if ENABLE_SWING:
+            actions.append(do_swing)
+        if ENABLE_MOUSE_MOVE:
+            actions.append(do_mouse_move)
+        if ENABLE_HOTBAR_SWITCH:
+            actions.append(do_hotbar_switch)
+
+        if actions:
+            action = random.choice(actions)
+            try:
+                action()
+            except Exception:
+                pass
+
+        random_sleep(ACTION_INTERVAL_MIN, ACTION_INTERVAL_MAX)
 
 
 def antiafk_loop():
     global running
     print("[AntiAFK] Started! Press F6 to stop.")
 
-    while not stop_event.is_set():
-        actions = []
-        if ENABLE_JUMP:
-            actions.append(("Jump", do_jump))
-        if ENABLE_SNEAK:
-            actions.append(("Sneak", do_sneak))
-        if ENABLE_SWING:
-            actions.append(("Swing", do_swing))
-        if ENABLE_MOUSE_MOVE:
-            actions.append(("Mouse Move", do_mouse_move))
-        if ENABLE_MOVEMENT:
-            actions.append(("Movement", do_movement))
-        if ENABLE_HOTBAR_SWITCH:
-            actions.append(("Hotbar Switch", do_hotbar_switch))
+    # Run continuous movement and random actions in parallel
+    move_thread = threading.Thread(target=continuous_movement, daemon=True)
+    action_thread = threading.Thread(target=random_actions, daemon=True)
 
-        if actions:
-            name, action = random.choice(actions)
-            try:
-                action()
-            except Exception:
-                pass
+    move_thread.start()
+    action_thread.start()
 
-        random_sleep(INTERVAL_MIN, INTERVAL_MAX)
+    move_thread.join()
+    action_thread.join()
 
     print("[AntiAFK] Stopped.")
     running = False
@@ -135,12 +171,13 @@ def main():
     print("  Minecraft AntiAFK Script")
     print("=" * 40)
     print(f"  Toggle: F6")
-    print(f"  Interval: {INTERVAL_MIN}-{INTERVAL_MAX}s")
+    print(f"  Action Interval: {ACTION_INTERVAL_MIN}-{ACTION_INTERVAL_MAX}s")
+    print(f"  Movement: Continuous (square pattern)")
+    print(f"  Walk Duration: {WALK_DURATION}s per direction")
     print(f"  Jump: {ENABLE_JUMP}")
     print(f"  Sneak: {ENABLE_SNEAK}")
     print(f"  Swing: {ENABLE_SWING}")
     print(f"  Mouse Move: {ENABLE_MOUSE_MOVE}")
-    print(f"  Movement: {ENABLE_MOVEMENT}")
     print(f"  Hotbar Switch: {ENABLE_HOTBAR_SWITCH}")
     print("=" * 40)
     print("Focus your Minecraft window and press F6 to start.")
